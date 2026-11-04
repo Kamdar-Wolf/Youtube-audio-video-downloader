@@ -183,7 +183,18 @@
       <div id="jobProgressBanner" class="job-progress-banner hidden">
         <div class="job-progress-info">
           <strong id="jobStatusTitle">Stahování probíhá…</strong>
-          <span id="jobStatusCounter">0 / 0 hotovo</span>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span id="jobStatusCounter">0 / 0 hotovo</span>
+            <a
+              id="downloadBrowserZipBtn"
+              href="#"
+              class="btn btn-primary btn-sm hidden"
+              style="text-decoration: none;"
+              title="Uložit stažené soubory přímo přes prohlížeč (ideální při spuštění z GitHub Codespaces)"
+            >
+              📦 Uložit do zařízení (ZIP / Soubor)
+            </a>
+          </div>
         </div>
         <div class="progress-bar-outer">
           <div id="jobOverallProgressBar" class="progress-bar-inner" style="width: 0%"></div>

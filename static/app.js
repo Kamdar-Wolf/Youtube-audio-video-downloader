@@ -42,6 +42,7 @@ const jobProgressBanner = document.getElementById("jobProgressBanner");
 const jobStatusTitle = document.getElementById("jobStatusTitle");
 const jobStatusCounter = document.getElementById("jobStatusCounter");
 const jobOverallProgressBar = document.getElementById("jobOverallProgressBar");
+const downloadBrowserZipBtn = document.getElementById("downloadBrowserZipBtn");
 
 // Helpers
 function formatDuration(seconds) {
@@ -549,6 +550,9 @@ function pollJobStatus(jobId) {
   }
 
   jobProgressBanner.classList.remove("hidden");
+  if (downloadBrowserZipBtn) {
+    downloadBrowserZipBtn.classList.add("hidden");
+  }
 
   const fetchStatus = async () => {
     try {
@@ -599,6 +603,10 @@ function pollJobStatus(jobId) {
 
       if (job.status === "completed") {
         jobStatusTitle.textContent = `✓ Stahování dokončeno! Uloženo do: ${job.target_dir}`;
+        if (downloadBrowserZipBtn && job.completed_count > 0) {
+          downloadBrowserZipBtn.href = `/api/jobs/${jobId}/download-zip`;
+          downloadBrowserZipBtn.classList.remove("hidden");
+        }
         clearInterval(activePollTimer);
       } else {
         jobStatusTitle.textContent = `Stahování a zápis metadat probíhá… (${overallPct.toFixed(0)} %)`;

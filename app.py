@@ -5,6 +5,7 @@ import time
 import uuid
 import json
 import shutil
+import zipfile
 import threading
 import subprocess
 from pathlib import Path
@@ -27,9 +28,16 @@ from mutagen.id3 import (
 )
 from mutagen.mp4 import MP4, MP4Cover
 
-BASE_DIR = Path(__file__).resolve().parent
+if getattr(sys, "frozen", False):
+    BASE_DIR = Path(sys.executable).resolve().parent
+    BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", BASE_DIR))
+else:
+    BASE_DIR = Path(__file__).resolve().parent
+    BUNDLE_DIR = BASE_DIR
+
 DEFAULT_DOWNLOAD_DIR = BASE_DIR / "Stazene"
 DEFAULT_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+IS_CLOUD_ENV = os.environ.get("CODESPACES") == "true" or os.environ.get("CLOUD_RUN") == "1" or sys.platform != "win32"
 
 app = FastAPI(title="YouTube & YT Music Downloader")
 
@@ -1001,6 +1009,7 @@ def run_download_job(job_id: str, req: StartDownloadRequest):
         formats_to_run = ["mp3", "mp4"] if fmt_choice == "both" else [fmt_choice]
 
         saved_files = []
+        saved_paths = []
         try:
             for f in formats_to_run:
                 out_path, updated_meta = download_single_item_Format(
@@ -1016,6 +1025,7 @@ def run_download_job(job_id: str, req: StartDownloadRequest):
                     ffmpeg_dir=ffmpeg_dir,
                 )
                 saved_files.append(out_path.name)
+                saved_paths.append(str(out_path))
                 item_dict.update(updated_meta)
 
             with JOBS_LOCK:
@@ -1025,8 +1035,10 @@ def run_download_job(job_id: str, req: StartDownloadRequest):
                     "speed": "",
                     "status_text": f"Hotovo ({', '.join(saved_files)})",
                     "saved_files": saved_files,
+                    "saved_paths": saved_paths,
                     "release_date": item_dict.get("release_date", ""),
                 })
+                DOWNLOAD_JOBS[job_id]["all_files"].extend(saved_paths)
                 DOWNLOAD_JOBS[job_id]["completed_count"] += 1
         except Exception as e:
             with JOBS_LOCK:
@@ -1077,12 +1089,14 @@ def start_download(req: StartDownloadRequest):
     with JOBS_LOCK:
         DOWNLOAD_JOBS[job_id] = {
             "job_id": job_id,
+            "playlist_title": req.playlist_title or "Stazene_skladby",
             "status": "running",
             "total_count": len(req.items),
             "completed_count": 0,
             "failed_count": 0,
             "target_dir": req.output_dir,
             "items": items_state,
+            "all_files": [],
             "error": "",
         }
 
@@ -1099,8 +1113,38 @@ def get_job_status(job_id: str):
         return job
 
 
+@app.get("/api/jobs/{job_id}/download-zip")
+def download_job_zip(job_id: str):
+    """Pack all downloaded files of a job into a ZIP archive and stream to browser (ideal for GitHub Codespaces / Cloud)."""
+    with JOBS_LOCK:
+        job = DOWNLOAD_JOBS.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Úloha nebyla nalezena.")
+        file_paths = [Path(p) for p in job.get("all_files", []) if Path(p).exists()]
+        zip_title = sanitize_filename(job.get("playlist_title") or "Stazene_skladby")
+
+    if not file_paths:
+        raise HTTPException(status_code=404, detail="Žádné stažené soubory nejsou k dispozici.")
+
+    # If only 1 file was downloaded, return that file directly
+    if len(file_paths) == 1:
+        fp = file_paths[0]
+        return FileResponse(path=str(fp), filename=fp.name, media_type="application/octet-stream")
+
+    zip_path = DEFAULT_DOWNLOAD_DIR / f"{zip_title}_{job_id[:6]}.zip"
+    with zipfile.ZipFile(str(zip_path), "w", zipfile.ZIP_STORED) as zf:
+        for fp in file_paths:
+            zf.write(str(fp), arcname=fp.name)
+
+    return FileResponse(
+        path=str(zip_path),
+        filename=f"{zip_title}.zip",
+        media_type="application/zip",
+    )
+
+
 # Serve frontend static files
-STATIC_DIR = BASE_DIR / "static"
+STATIC_DIR = BUNDLE_DIR / "static"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -1114,10 +1158,11 @@ if __name__ == "__main__":
     import uvicorn
     import webbrowser
     ensure_ffmpeg()
-    port = 8765
-    if "--no-browser" not in sys.argv:
+    port = int(os.environ.get("PORT", "8765"))
+    host = "0.0.0.0" if IS_CLOUD_ENV or "--host-all" in sys.argv else "127.0.0.1"
+    if not IS_CLOUD_ENV and "--no-browser" not in sys.argv:
         threading.Timer(1.2, lambda: webbrowser.open(f"http://127.0.0.1:{port}")).start()
     print(f"============================================================")
     print(f" YouTube & YT Music Downloader bezi na: http://127.0.0.1:{port}")
     print(f"============================================================")
-    uvicorn.run(app, host="127.0.0.1", port=port, reload=False)
+    uvicorn.run(app, host=host, port=port, reload=False)
