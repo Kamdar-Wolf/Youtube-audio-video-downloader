@@ -5,15 +5,15 @@ cd /d "%~dp0"
 echo ============================================================
 echo   Kontrola zavislosti a spousteni YouTube Downloader...
 echo ============================================================
-python -c "import fastapi, uvicorn, yt_dlp, mutagen, PIL, static_ffmpeg" 2>nul
+python -c "import fastapi, uvicorn, yt_dlp, mutagen, PIL, static_ffmpeg, webview" 2>nul
 if errorlevel 1 (
     echo Instaluji potrebne knihovny pri prvnim spusteni...
     python -m pip install --upgrade -r requirements.txt
 )
 echo.
-echo   Spoustim webovy server na http://127.0.0.1:8765
-echo   Prohlizec se za okamzik automaticky otevre.
-echo   Pro ukonceni programu zavrete toto okno.
+echo   Oteviram okno aplikace YouTube ^& YT Music Downloader...
+echo   Po zavreni okna aplikace se automaticky uzavre i tento terminal.
 echo ============================================================
 python app.py
-pause
+if errorlevel 1 pause
+exit

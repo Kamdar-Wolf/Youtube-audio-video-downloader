@@ -41,16 +41,18 @@ Aplikaci můžete spustit **3 způsoby** – buď přímo v cloudu na GitHubu, j
 Aplikace obsahuje konfiguraci [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json), takže ji lze spustit **přímo na serveru GitHubu bez jakékoliv instalace do počítače**:
 1. Na stránce tohoto repozitáře na GitHubu klikněte na zelené tlačítko **`<> Code`**.
 2. Přepněte na záložku **Codespaces** a klikněte na **Create codespace on main**.
-3. GitHub automaticky připraví prostředí (Python, FFmpeg, Node.js), spustí aplikaci a otevře webové rozhraní.
+3. GitHub automaticky připraví prostředí (Python, FFmpeg, Node.js), spustí aplikaci a automaticky otevře náhledové okno s rozhraním přímo uvnitř Codespaces (případně v nové záložce po kliknutí na veřejný `https://...-8765.app.github.dev` odkaz v terminálu).
 4. Po stažení skladeb klikněte v aplikaci na tlačítko **„📦 Uložit do zařízení (ZIP / Soubor)“**, které odešle hotové MP3/MP4 přímo do vašeho počítače nebo telefonu.
 
 ---
 
-### Možnost 2: Samostatný `.exe` program pro Windows (z GitHub Actions)
+### Možnost 2: Samostatný `.exe` program pro Windows s vlastním oknem (z GitHub Actions)
 Součástí repozitáře je automatická sestavovací linka [`.github/workflows/build-windows.yml`](.github/workflows/build-windows.yml):
 1. Na GitHubu otevřete horní záložku **Actions** → **Build Windows Executable (.exe)**.
 2. Klikněte na nejnovější sestavení (nebo na tlačítko *Run workflow*).
-3. V sekci **Artifacts** si stáhněte **`YouTube-Downloader-Windows-EXE`** (`YouTube-Downloader.exe`) a spusťte jej – nevyžaduje instalaci Pythonu.
+3. V sekci **Artifacts** si stáhněte **`YouTube-Downloader-Windows-EXE`** (`YouTube-Downloader.exe`) a spusťte jej.
+   - Program se otevře ve **vlastním nativním okně aplikace** (bez otevírání webového prohlížeče a bez černého okna příkazového řádku na pozadí).
+   - Jakmile okno aplikace křížkem zavřete, celý proces se okamžitě ukončí.
 
 ---
 
@@ -60,7 +62,7 @@ Pokud máte nainstalovaný [Python 3.10+](https://www.python.org/downloads/) (a 
 1. Stáhněte si tento repozitář (tlačítko **Code → Download ZIP** nebo `git clone`).
 2. Dvakrát klikněte na soubor **[`spustit.bat`](spustit.bat)**.
    - Při prvním spuštění skript automaticky nainstaluje potřebné knihovny z [`requirements.txt`](requirements.txt) a sám stáhne binární soubory `FFmpeg`.
-   - Automaticky se otevře prohlížeč na adrese `http://127.0.0.1:8765`.
+   - Automaticky se otevře **samostatné nativní okno aplikace** (`pywebview` / WebView2). Po zavření tohoto okna se automaticky ukončí i server a terminál.
 
 #### Ruční spuštění z příkazové řádky:
 ```bash

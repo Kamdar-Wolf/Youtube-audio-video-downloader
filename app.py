@@ -4,6 +4,7 @@ import sys
 import time
 import uuid
 import json
+import socket
 import shutil
 import zipfile
 import threading
@@ -13,6 +14,24 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Dict, Any
 from urllib.parse import urlparse, parse_qs
+
+# In PyInstaller --noconsole mode on Windows, sys.stdout and sys.stderr are None
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
+# Prevent child console windows (ffmpeg, ffprobe, node) from flashing on Windows in GUI mode
+if sys.platform == "win32" and getattr(sys, "frozen", False):
+    _orig_popen = subprocess.Popen
+
+    class _NoWindowPopen(_orig_popen):
+        def __init__(self, *args, **kwargs):
+            if "creationflags" not in kwargs:
+                kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+            super().__init__(*args, **kwargs)
+
+    subprocess.Popen = _NoWindowPopen
 
 import requests
 import yt_dlp
@@ -51,6 +70,7 @@ DOWNLOAD_EXECUTOR = ThreadPoolExecutor(max_workers=3)
 ENRICH_EXECUTOR = ThreadPoolExecutor(max_workers=4)
 
 FFMPEG_DIR: Optional[str] = None
+MAIN_WINDOW: Any = None
 
 
 def ensure_ffmpeg() -> Optional[str]:
@@ -623,6 +643,7 @@ def get_config():
         "default_output_dir": str(DEFAULT_DOWNLOAD_DIR),
         "ffmpeg_ready": bool(ffmpeg_dir),
         "ffmpeg_dir": ffmpeg_dir or "",
+        "is_cloud": IS_CLOUD_ENV,
     }
 
 
@@ -633,21 +654,41 @@ def browse_folder(payload: Dict[str, Any] = None):
     if not os.path.exists(initial_dir):
         initial_dir = str(DEFAULT_DOWNLOAD_DIR)
 
+    # 1. If running inside pywebview native desktop window, use its native folder dialog
+    if MAIN_WINDOW is not None:
+        try:
+            import webview
+            folder_Mode = getattr(webview, "FOLDER_DIALOG", 20)
+            result = MAIN_WINDOW.create_file_dialog(folder_Mode, directory=initial_dir)
+            if result:
+                chosen = result[0] if isinstance(result, (list, tuple)) else str(result)
+                if chosen:
+                    return {"selected": True, "path": str(Path(chosen).resolve())}
+            return {"selected": False, "path": initial_dir}
+        except Exception as e:
+            print(f"[WARN] pywebview folder dialog fallback: {e}")
+
+    # 2. Fallback to in-process tkinter folder dialog (works in both script and frozen .exe)
     try:
-        # Run tkinter in a subprocess so it never blocks or conflicts with asyncio/threads
-        script = (
-            "import tkinter as tk; from tkinter import filedialog; "
-            "root = tk.Tk(); root.withdraw(); root.attributes('-topmost', True); "
-            f"folder = filedialog.askdirectory(initialdir={repr(initial_dir)}, title='Vyberte cílovou složku pro stahování'); "
-            "print(folder); root.destroy()"
-        )
-        res = subprocess.run(
-            [sys.executable, "-c", script],
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
-        chosen = res.stdout.strip()
+        chosen_holder = {"path": ""}
+
+        def _run_tk():
+            import tkinter as tk
+            from tkinter import filedialog
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            folder = filedialog.askdirectory(
+                initialdir=initial_dir,
+                title="Vyberte cílovou složku pro stahování",
+            )
+            chosen_holder["path"] = folder or ""
+            root.destroy()
+
+        t = threading.Thread(target=_run_tk)
+        t.start()
+        t.join(timeout=120)
+        chosen = chosen_holder["path"].strip()
         if chosen:
             chosen_path = str(Path(chosen).resolve())
             return {"selected": True, "path": chosen_path}
@@ -1154,15 +1195,98 @@ def serve_index():
     return FileResponse(str(STATIC_DIR / "index.html"))
 
 
+def find_available_port(host: str = "127.0.0.1", preferred_port: int = 8765) -> int:
+    """Return preferred_port if free, otherwise pick the next available port."""
+    for p in range(preferred_port, preferred_port + 25):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind((host, p))
+                return p
+            except OSError:
+                continue
+    return preferred_port
+
+
+def wait_for_server(host: str, port: int, timeout: float = 10.0) -> bool:
+    """Wait until the local FastAPI server is accepting connections."""
+    deadline = time.time() + timeout
+    check_host = "127.0.0.1" if host == "0.0.0.0" else host
+    while time.time() < deadline:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.3)
+            if s.connect_ex((check_host, port)) == 0:
+                return True
+        time.sleep(0.1)
+    return False
+
+
 if __name__ == "__main__":
     import uvicorn
     import webbrowser
+
     ensure_ffmpeg()
-    port = int(os.environ.get("PORT", "8765"))
-    host = "0.0.0.0" if IS_CLOUD_ENV or "--host-all" in sys.argv else "127.0.0.1"
-    if not IS_CLOUD_ENV and "--no-browser" not in sys.argv:
-        threading.Timer(1.2, lambda: webbrowser.open(f"http://127.0.0.1:{port}")).start()
-    print(f"============================================================")
-    print(f" YouTube & YT Music Downloader bezi na: http://127.0.0.1:{port}")
-    print(f"============================================================")
-    uvicorn.run(app, host=host, port=port, reload=False)
+    preferred_port = int(os.environ.get("PORT", "8765"))
+    headless_mode = IS_CLOUD_ENV or "--no-browser" in sys.argv or "--host-all" in sys.argv
+    host = "0.0.0.0" if (IS_CLOUD_ENV or "--host-all" in sys.argv) else "127.0.0.1"
+    port = preferred_port if IS_CLOUD_ENV else find_available_port(host, preferred_port)
+    local_url = f"http://127.0.0.1:{port}"
+
+    if headless_mode:
+        # Cloud / GitHub Codespaces or background daemon mode
+        cs_name = os.environ.get("CODESPACE_NAME", "")
+        cs_domain = os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", "app.github.dev")
+        display_url = f"https://{cs_name}-{port}.{cs_domain}" if cs_name else local_url
+
+        print("============================================================")
+        print(f" YouTube & YT Music Downloader bezi na: {display_url}")
+        print("============================================================")
+
+        if os.environ.get("CODESPACES") == "true":
+            def _open_codespace_preview():
+                wait_for_server(host, port, timeout=12.0)
+                browser_cmd = os.environ.get("BROWSER")
+                if browser_cmd:
+                    try:
+                        subprocess.Popen([browser_cmd, display_url])
+                    except Exception:
+                        pass
+
+            threading.Thread(target=_open_codespace_preview, daemon=True).start()
+
+        uvicorn.run(app, host=host, port=port, reload=False)
+    else:
+        # Standalone desktop mode (.exe or local script): run server in background thread
+        # and open a dedicated native window (pywebview) with embedded WebView2.
+        config = uvicorn.Config(app, host=host, port=port, reload=False, log_config=None)
+        server = uvicorn.Server(config)
+
+        server_thread = threading.Thread(target=server.run, daemon=True)
+        server_thread.start()
+        wait_for_server(host, port, timeout=10.0)
+
+        try:
+            import webview
+
+            MAIN_WINDOW = webview.create_window(
+                title="YouTube & YT Music Downloader",
+                url=local_url,
+                width=1320,
+                height=880,
+                min_size=(920, 620),
+                background_color="#0f1117",
+                text_select=True,
+            )
+            # Blocks until the user closes the native application window
+            webview.start()
+        except Exception as e:
+            print(f"[WARN] Nepodarilo se otevrit nativni okno ({e}), oteviram prohlizec...")
+            webbrowser.open(local_url)
+            try:
+                while server_thread.is_alive():
+                    time.sleep(0.5)
+            except KeyboardInterrupt:
+                pass
+        finally:
+            # Immediately terminate server and background threads when window is closed
+            server.should_exit = True
+            os._exit(0)
