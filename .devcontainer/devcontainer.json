@@ -12,7 +12,15 @@
   "portsAttributes": {
     "8765": {
       "label": "YouTube Downloader Web UI",
-      "onAutoForward": "openBrowser"
+      "onAutoForward": "openPreview",
+      "protocol": "http"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "simpleBrowser.focusLockIndicator.enabled": false
+      }
     }
   }
 }
