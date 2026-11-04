@@ -23,9 +23,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
-      - name: Build single-file executable (.exe)
+      - name: Build single-file windowed executable (.exe)
         run: |
-          pyinstaller --noconfirm --onefile --name "YouTube-Downloader" --add-data "static;static" --collect-all static_ffmpeg --collect-all yt_dlp_ejs app.py
+          pyinstaller --noconfirm --onefile --noconsole --name "YouTube-Downloader" --add-data "static;static" --collect-all static_ffmpeg --collect-all yt_dlp_ejs --collect-all webview --collect-all pythonnet --collect-all clr_loader app.py
 
       - name: Upload Windows .exe Artifact
         uses: actions/upload-artifact@v4
