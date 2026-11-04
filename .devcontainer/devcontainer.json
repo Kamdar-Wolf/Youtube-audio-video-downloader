@@ -1,0 +1,18 @@
+{
+  "name": "YouTube & YT Music Downloader",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
+  },
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y ffmpeg && pip install -r requirements.txt",
+  "postAttachCommand": "python app.py --host-all --no-browser",
+  "forwardPorts": [8765],
+  "portsAttributes": {
+    "8765": {
+      "label": "YouTube Downloader Web UI",
+      "onAutoForward": "openBrowser"
+    }
+  }
+}
