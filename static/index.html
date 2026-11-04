@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YouTube & YT Music Downloader — Audio (MP3) & Video (MP4)</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="app-container">
+    <!-- HEADER -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 18V5l12-2v13"></path>
+            <circle cx="6" cy="18" r="3"></circle>
+            <circle cx="18" cy="16" r="3"></circle>
+          </svg>
+        </div>
+        <div>
+          <h1>YouTube &amp; YT Music Downloader</h1>
+          <p class="subtitle">Stahování playlistů, alb a skladeb z <strong>youtube.com</strong> a <strong>music.youtube.com</strong> s automatickými metadaty a přebalem</p>
+        </div>
+      </div>
+      <div class="header-badges">
+        <span class="badge badge-mp3">🎵 MP3 320 kbps + ID3v2.3</span>
+        <span class="badge badge-mp4">🎬 MP4 Video + Metadata</span>
+        <span id="ffmpegStatusBadge" class="badge badge-status">Kontrola FFmpeg…</span>
+      </div>
+    </header>
+
+    <!-- URL INPUT CARD -->
+    <section class="card url-card">
+      <div class="url-input-row">
+        <div class="input-wrapper">
+          <input
+            type="text"
+            id="urlInput"
+            placeholder="Vložte odkaz z www.youtube.com nebo music.youtube.com (playlist, album, video, skladba)…"
+            autocomplete="off"
+          />
+          <button type="button" id="pasteBtn" class="btn btn-ghost" title="Vložit ze schránky">
+            📋 Vložit
+          </button>
+        </div>
+        <button type="button" id="analyzeBtn" class="btn btn-primary btn-lg">
+          🔍 Načíst odkaz
+        </button>
+      </div>
+      <div class="url-options-row">
+        <label class="checkbox-label">
+          <input type="checkbox" id="preferPlaylistCheck" checked />
+          <span>Pokud odkaz obsahuje skladbu uvnitř playlistu, načíst celý playlist</span>
+        </label>
+        <span id="enrichProgressText" class="enrich-status hidden"></span>
+      </div>
+      <div id="errorBanner" class="alert alert-error hidden"></div>
+    </section>
+
+    <!-- SETTINGS CARD -->
+    <section class="card settings-card">
+      <div class="card-header-Collapsible">
+        <h2>⚙️ Nastavení ukládání, pojmenování a metadat</h2>
+      </div>
+      <div class="settings-grid">
+        <!-- Target Folder -->
+        <div class="setting-group setting-folder">
+          <label for="outputDirInput">Cílová složka pro uložení souborů</label>
+          <div class="folder-row">
+            <input type="text" id="outputDirInput" placeholder="Cesta ke složce…" />
+            <button type="button" id="browseFolderBtn" class="btn btn-secondary">
+              📁 Vybrat složku…
+            </button>
+            <button type="button" id="openFolderBtn" class="btn btn-ghost" title="Otevřít cílovou složku v Průzkumníku Windows">
+              📂 Otevřít
+            </button>
+          </div>
+        </div>
+
+        <!-- Naming Format -->
+        <div class="setting-group">
+          <label for="namingFormatSelect">Formát pojmenování souborů</label>
+          <select id="namingFormatSelect">
+            <option value="artist_title" selected>Interpret - Název skladby (doporučeno)</option>
+            <option value="index_artist_title">01. Interpret - Název skladby (s číslem stopy)</option>
+            <option value="title_only">Název skladby</option>
+            <option value="original_title">Původní název videa z YouTube</option>
+          </select>
+        </div>
+
+        <!-- Video Quality -->
+        <div class="setting-group">
+          <label for="videoQualitySelect">Kvalita videa (při volbě Video MP4)</label>
+          <select id="videoQualitySelect">
+            <option value="best" selected>Nejvyšší dostupná (až 4K / 1080p)</option>
+            <option value="1080">Max 1080p (Full HD)</option>
+            <option value="720">Max 720p (HD)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="settings-toggles">
+        <label class="checkbox-label">
+          <input type="checkbox" id="subfolderCheck" checked />
+          <span>📁 Automaticky vytvořit podsložku podle názvu playlistu / alba</span>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="embedCoverCheck" checked />
+          <span>🖼️ Vložit do souborů miniaturu / přebal alba (Cover Art) a všechna metadata (interpret, datum zveřejnění, album, stopa)</span>
+        </label>
+      </div>
+    </section>
+
+    <!-- LOADING SPINNER -->
+    <div id="loadingSection" class="loading-box hidden">
+      <div class="spinner"></div>
+      <p>Načítám informace o playlistu / skladbách z YouTube…</p>
+    </div>
+
+    <!-- PLAYLIST / ITEMS SECTION -->
+    <section id="playlistSection" class="card playlist-card hidden">
+      <!-- Playlist Header Bar -->
+      <div class="playlist-top-bar">
+        <div class="playlist-meta-info">
+          <div class="playlist-badges">
+            <span id="sourceTypeBadge" class="badge badge-source">YouTube</span>
+            <span id="itemCountBadge" class="badge badge-count">0 položek</span>
+          </div>
+          <div class="playlist-title-edit">
+            <label for="playlistTitleInput">Název playlistu / alba (pro podsložku a tag Album):</label>
+            <input type="text" id="playlistTitleInput" placeholder="Název playlistu nebo alba…" />
+          </div>
+        </div>
+
+        <div class="playlist-main-actions">
+          <button type="button" id="downloadSelectedBtn" class="btn btn-success btn-lg">
+            ⬇ Stáhnout vybrané (<span id="selectedCountSpan">0</span>)
+          </button>
+        </div>
+      </div>
+
+      <!-- Bulk Controls Toolbar -->
+      <div class="bulk-toolbar">
+        <div class="bulk-left">
+          <label class="checkbox-label select-all-label">
+            <input type="checkbox" id="selectAllCheck" checked />
+            <span>Vybrat vše</span>
+          </label>
+          <input
+            type="text"
+            id="searchFilterInput"
+            class="search-filter"
+            placeholder="🔎 Filtrovat skladby v seznamu…"
+          />
+          <button
+            type="button"
+            id="swapTitleArtistBtn"
+            class="btn btn-secondary btn-sm"
+            title="Prohodit pole Název skladby a Interpret u všech položek v seznamu"
+          >
+            ⇄ Prohodit Název ↔ Interpret
+          </button>
+        </div>
+
+        <div class="bulk-right">
+          <span class="bulk-label">Nastavit všem formát:</span>
+          <div class="segmented-group">
+            <button type="button" class="btn btn-sm btn-format-bulk active-mp3" data-bulk-format="mp3">
+              🎵 Vše MP3 (Audio)
+            </button>
+            <button type="button" class="btn btn-sm btn-format-bulk" data-bulk-format="mp4">
+              🎬 Vše MP4 (Video)
+            </button>
+            <button type="button" class="btn btn-sm btn-format-bulk" data-bulk-format="both">
+              🎵+🎬 Vše Obojí
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Global Download Progress Banner -->
+      <div id="jobProgressBanner" class="job-progress-banner hidden">
+        <div class="job-progress-info">
+          <strong id="jobStatusTitle">Stahování probíhá…</strong>
+          <span id="jobStatusCounter">0 / 0 hotovo</span>
+        </div>
+        <div class="progress-bar-outer">
+          <div id="jobOverallProgressBar" class="progress-bar-inner" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Items List -->
+      <div id="itemsContainer" class="items-list"></div>
+    </section>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
